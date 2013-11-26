@@ -5,7 +5,6 @@
 #define MAX(x, y) (x < y) ? y : x
 #define MIN(x, y) (x < y) ? x : y
 
-
 using namespace std;
 
 __device__ float interpolate(const unsigned char left, const unsigned char right, float alpha) {
