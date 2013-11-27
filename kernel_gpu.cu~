@@ -5,19 +5,16 @@
 #define MAX(x, y) (x < y) ? y : x
 #define MIN(x, y) (x < y) ? x : y
 
+
 using namespace std;
 
-__device__ float interpolate(const unsigned char left, const unsigned char right, float alpha) {
-	return ((float) left * (1.0f - alpha) + (float) right * alpha);
-}
-
-__global__ void zmncc(unsigned char *leftImg, unsigned char *rightImg, float *dispMap, 
+__global__ void zmncc(unsigned char *leftImg, unsigned char *rightImg, unsigned char *dispMap, 
 		int width, int height, int frame, int delta_min, int delta_max, float ncc_min) {
 	int xOff = blockIdx.x * blockDim.x + threadIdx.x;
 	int yOff = blockIdx.y * blockDim.y + threadIdx.y;
 	
 	if (xOff < frame + 1 + delta_max || xOff >= width - frame - 1 || yOff < frame + 1 || yOff >= height - frame - 1) {
-		dispMap[yOff * width + xOff] = 0.0f;
+		dispMap[yOff * width + xOff] = 0;
 	} else if (xOff < width && yOff < height) {
 		int disp = 0;
 		float stdDevLeft = 0.0f, medLeft = 0.0f;
@@ -63,57 +60,48 @@ __global__ void zmncc(unsigned char *leftImg, unsigned char *rightImg, float *di
 			}
 		}
 		
-		dispMap[yOff * width + xOff] = float(-disp - delta_min) / float(delta_max - delta_min);
+		dispMap[yOff * width + xOff] = (unsigned char) (float(disp) / float(-delta_max) * 255.0f);
 	}
 }
 
-__global__ void ssd(unsigned char *leftImg, unsigned char *rightImg, float *dispMap, 
-		int width, int height, int frame, int delta_min, int delta_max, float ssd_max, int steps) {
+__global__ void ssd(unsigned char *leftImg, unsigned char *rightImg, unsigned char *dispMap, 
+		int width, int height, int frame, int delta_min, int delta_max, float ssd_max) {
 	int xOff = blockIdx.x * blockDim.x + threadIdx.x;
 	int yOff = blockIdx.y * blockDim.y + threadIdx.y;
 	
 	if (xOff < frame + 1 + delta_max || xOff >= width - frame - 1 || yOff < frame + 1 || yOff >= height - frame - 1) {
-		dispMap[yOff * width + xOff] = 0.0f;
+		dispMap[yOff * width + xOff] = 0;
 	} else if (xOff < width && yOff < height) {
 		int disp = 0;
 		float val;
 
 		for (int delta = -delta_min; delta >= -delta_max; delta--) {
-			int s;
-			for (s = 0; s < steps; s++) {
-				float cur_ssd = 0.0f;
+			float cur_ssd = 0.0f;
 
-				for (int j = yOff - frame; j < yOff + frame + 1; j++) {
-					for (int i = xOff - frame; i < xOff + frame + 1; i++) {
-						val = float(leftImg[j * width + i] - interpolate(rightImg[j * width + i + delta - 1], 
-									rightImg[j * width + i + delta], float(s) / float(steps)));
-						cur_ssd += (val * val);
-					}
-				}
-				
-				if (cur_ssd < ssd_max) {
-					ssd_max = cur_ssd;
-					disp = -delta * steps + s;
+			for (int j = yOff - frame; j < yOff + frame + 1; j++) {
+				for (int i = xOff - frame; i < xOff + frame + 1; i++) {
+					val = float(leftImg[j * width + i] - rightImg[j * width + i + delta]);
+					cur_ssd += (val * val);
 				}
 			}
 			
-			if (disp == (delta_max + 1) * steps - 1)
-				dispMap[yOff * width + xOff] = 0.0f;
-			else
-				dispMap[yOff * width + xOff] = float(disp - delta_min * steps) 
-						/ float(steps * (delta_max - delta_min)); 
+			if (cur_ssd < ssd_max) {
+				ssd_max = cur_ssd;
+				disp = delta;
+			}
 		}
-		//dispMap[yOff * width + xOff] = (unsigned char) (float(disp) / float(-delta_max) * 255.0f);
+		
+		dispMap[yOff * width + xOff] = (unsigned char) (float(disp) / float(-delta_max) * 255.0f);
 	}
 }
 
-__global__ void ncc(unsigned char *leftImg, unsigned char *rightImg, float *dispMap, 
+__global__ void ncc(unsigned char *leftImg, unsigned char *rightImg, unsigned char *dispMap, 
 		int width, int height, int frame, int delta_min, int delta_max, float ncc_min) {
 	int xOff = blockIdx.x * blockDim.x + threadIdx.x;
 	int yOff = blockIdx.y * blockDim.y + threadIdx.y;
 	
 	if (xOff < frame + 1 + delta_max || xOff >= width - frame - 1 || yOff < frame + 1 || yOff >= height - frame - 1) {
-		dispMap[yOff * width + xOff] = 0.0f;
+		dispMap[yOff * width + xOff] = 0;
 	} else if (xOff < width && yOff < height) {
 		int disp = 0;
 		float valLeft, valRight;
@@ -141,23 +129,22 @@ __global__ void ncc(unsigned char *leftImg, unsigned char *rightImg, float *disp
 			}
 		}
 		
-		dispMap[yOff * width + xOff] = float(-disp - delta_min) / float(delta_max - delta_min);
-		//dispMap[yOff * width + xOff] = (unsigned char) (float(disp) / float(-delta_max) * 255.0f);
+		dispMap[yOff * width + xOff] = (unsigned char) (float(disp) / float(-delta_max) * 255.0f);
 	}
 }
 
-__global__ void global_zmncc(unsigned char *leftNorm, unsigned char *rightNorm, float *dispMap, int width, 
+__global__ void global_zmncc(unsigned char *leftNorm, unsigned char *rightNorm, unsigned char *dispMap, int width, 
 		int height, int frame, int delta_min, int delta_max, float ncc_min, float medLeft, float medRight, 
 		float stdDevLeft, float stdDevRight) {
 	int xOff = blockIdx.x * blockDim.x + threadIdx.x;
 	int yOff = blockIdx.y * blockDim.y + threadIdx.y;
 
 	if (xOff < frame + 1 + delta_max || xOff >= width - frame - 1 || yOff < frame + 1 || yOff >= height - frame - 1) {
-		dispMap[yOff * width + xOff] = 0.0f;
+		dispMap[yOff * width + xOff] = 0;
 	} else if (xOff < width && yOff < height) {
 		int disp = 0;
 
-		for (int delta = -delta_min; delta >= -delta_max; delta--) {
+		for (int delta = -delt_min; delta >= -delta_max; delta--) {
 			float cur_ncc = 0.0f;
 			
 			for (int j = yOff - frame; j < yOff + frame + 1; j++) {
@@ -181,19 +168,18 @@ __global__ void global_zmncc(unsigned char *leftNorm, unsigned char *rightNorm, 
 			}
 		}
 		
-		dispMap[yOff * width + xOff] = float(-disp - delta_min) / float(delta_max - delta_min);
-		//dispMap[yOff * width + xOff] = (unsigned char) (float(disp) / float(-delta_max) * 255.0f);
+		dispMap[yOff * width + xOff] = (unsigned char) (float(disp) / float(-delta_max) * 255.0f);
 	}
 }
 
-__global__ void normalized_ssd(unsigned char *leftNorm, unsigned char *rightNorm, float *dispMap, int width, 
+__global__ void normalized_ssd(unsigned char *leftNorm, unsigned char *rightNorm, unsigned char *dispMap, int width, 
 		int height, int frame, int delta_min, int delta_max, float ssd_min, float medLeft, float medRight, 
 		float stdDevLeft, float stdDevRight) {
 	int xOff = blockIdx.x * blockDim.x + threadIdx.x;
 	int yOff = blockIdx.y * blockDim.y + threadIdx.y;
 	
 	if (xOff < frame + 1 + delta_max || xOff >= width - frame - 1 || yOff < frame + 1 || yOff >= height - frame - 1) {
-		dispMap[yOff * width + xOff] = 0.0f;
+		dispMap[yOff * width + xOff] = 0;
 	} else if (xOff < width && yOff < height) {
 		int disp = 0;
 		
@@ -221,8 +207,7 @@ __global__ void normalized_ssd(unsigned char *leftNorm, unsigned char *rightNorm
 			}
 		}
 		
-		dispMap[yOff * width + xOff] = float(-disp - delta_min) / float(delta_max - delta_min);
-		//dispMap[yOff * width + xOff] = (unsigned char) (float(disp) / float(-delta_max) * 255.0f);
+		dispMap[yOff * width + xOff] = (unsigned char) (float(disp) / float(-delta_max) * 255.0f);
 	}
 }
 
@@ -271,11 +256,11 @@ void calcStdDev(unsigned char *leftCPUImg, unsigned char *rightCPUImg, int width
 }
 
 extern "C" void cuda_blockmatching(unsigned char *leftCPUImg, unsigned char *rightCPUImg, unsigned char *leftImg, 
-		unsigned char *rightImg, float *dispMap, int width, int height, dim3 gridDim, 
-		dim3 blockDim, int frame, int delta_min, int delta_max, float borderVal, int steps, int algo) {
+		unsigned char *rightImg, unsigned char *dispMap, int width, int height, dim3 gridDim, 
+		dim3 blockDim, int frame, int delta_min, int delta_max, float borderVal, int algo) {
 	if (algo == 0) { //SSD
 		ssd<<<gridDim, blockDim>>>(leftImg, rightImg, dispMap, width, height, 
-				frame, delta_min, delta_max, borderVal, steps);
+				frame, delta_min, delta_max, borderVal);
 	} else if (algo == 1) { //normalized SSD
 		float medLeft, medRight, stdDevLeft, stdDevRight;
 		float *leftNorm, *rightNorm;

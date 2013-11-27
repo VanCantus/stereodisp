@@ -276,7 +276,7 @@ long long timeUSec() {
 	return now.time_of_day().total_microseconds();
 }
 
-void loadImages(unsigned char **gDispMap, CvSize *imageSize, boost::posix_time::ptime *start, bool rectify, 
+void loadImages(float **gDispMap, CvSize *imageSize, boost::posix_time::ptime *start, bool rectify, 
 		Mat *leftImg, Mat *rightImg, unsigned char **gLeftRekt, unsigned char **gRightRekt) {
 	string leftPath, rightPath;
 	
@@ -311,7 +311,7 @@ void loadImages(unsigned char **gDispMap, CvSize *imageSize, boost::posix_time::
 		cudaFree(*gRightRekt);
 		
 		if (cudaMalloc((void **) gDispMap, (*imageSize).height * (*imageSize).width  
-				* sizeof(unsigned char)) != cudaSuccess) {
+				* sizeof(float)) != cudaSuccess) {
 			cerr << "ERROR: Failed cudaMalloc of disparity map" << endl;
 			exit(-1);
 		}
@@ -334,7 +334,8 @@ int main(int argc, char** argv) {
 	int algo = 0, algonew;
 	string output, input;
 	CvSize imageSize = {0, 0};
-	unsigned char *gDispMap = 0, *dispMap, *gLeftRekt = 0, *gRightRekt = 0;
+	float *gDispMap = 0;
+	unsigned char *dispMap, *gLeftRekt = 0, *gRightRekt = 0;
 	int device;
 	struct cudaDeviceProp prop;
 	bool loadNewImages = true;
@@ -473,17 +474,17 @@ int main(int argc, char** argv) {
 				gRightRekt, gDispMap, imageSize.width, imageSize.height, gridDim, blockDim, frame, delta_min, delta_max, borderVal, steps, algo);
 		cout << "done" << endl;
 		
-		dispMap = new unsigned char[imageSize.width * imageSize.height];
-		memset(dispMap, 0, imageSize.width * imageSize.height * sizeof(unsigned char));
+		dispMap = new float[imageSize.width * imageSize.height];
+		memset(dispMap, 0, imageSize.width * imageSize.height * sizeof(float));
 		cudaMemcpy(dispMap, gDispMap, imageSize.width * imageSize.height 
-				* sizeof(unsigned char), cudaMemcpyDeviceToHost);
+				* sizeof(float), cudaMemcpyDeviceToHost);
 		
 		end = boost::posix_time::microsec_clock::local_time();
 		boost::posix_time::time_duration msdiff = end - start;
 		cout << "Time: " << msdiff.total_microseconds() / 1000.0 << "ms" << endl;
 		cout << "FPS: " << 1000000 / msdiff.total_microseconds() << endl << endl;
 		
-		Mat dispMat = Mat(imageSize.height, imageSize.width, DataType<unsigned char>::type/*CV_8UC1*/);
+		Mat dispMat = Mat(imageSize.height, imageSize.width, DataType<float>::type/*CV_8UC1*/);
 		dispMat.data = dispMap;
 		
 		imshow("Disparity Map", dispMat);
