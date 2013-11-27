@@ -8,7 +8,7 @@
 using namespace std;
 
 __device__ float interpolate(const unsigned char left, const unsigned char right, float alpha) {
-	return ((float) left * (1.0f - alpha) + (float) right * alpha);
+	return ((float) left * alpha + (float) right * (1.0f - alpha));
 }
 
 __global__ void zmncc(unsigned char *leftImg, unsigned char *rightImg, float *dispMap, 
@@ -78,30 +78,30 @@ __global__ void ssd(unsigned char *leftImg, unsigned char *rightImg, float *disp
 		int disp = 0;
 		float val;
 
-		for (int delta = -delta_min; delta >= -delta_max; delta--) {
-			int s;
-			for (s = 0; s < steps; s++) {
+		for (int delta = delta_min; delta <= delta_max; delta++) {
+			if (delta == delta_max) {
+				break;
+			}
+
+			for (int s = 0; s < steps; s++) {
 				float cur_ssd = 0.0f;
 
 				for (int j = yOff - frame; j < yOff + frame + 1; j++) {
 					for (int i = xOff - frame; i < xOff + frame + 1; i++) {
-						val = float(leftImg[j * width + i] - interpolate(rightImg[j * width + i + delta - 1], 
-									rightImg[j * width + i + delta], float(s) / float(steps)));
+						val = float(leftImg[j * width + i]) - interpolate(rightImg[j * width + i - delta - 1], 
+									rightImg[j * width + i - delta], float(s) / float(steps));
 						cur_ssd += (val * val);
 					}
 				}
 				
 				if (cur_ssd < ssd_max) {
 					ssd_max = cur_ssd;
-					disp = -delta * steps + s;
+					disp = delta * steps + s;
 				}
 			}
 			
-			if (disp == (delta_max + 1) * steps - 1)
-				dispMap[yOff * width + xOff] = 0.0f;
-			else
-				dispMap[yOff * width + xOff] = float(disp - delta_min * steps) 
-						/ float(steps * (delta_max - delta_min)); 
+			dispMap[yOff * width + xOff] = float(disp - delta_min * steps) 
+					/ float(steps * (delta_max - delta_min)); 
 		}
 		//dispMap[yOff * width + xOff] = (unsigned char) (float(disp) / float(-delta_max) * 255.0f);
 	}
@@ -142,7 +142,6 @@ __global__ void ncc(unsigned char *leftImg, unsigned char *rightImg, float *disp
 		}
 		
 		dispMap[yOff * width + xOff] = float(-disp - delta_min) / float(delta_max - delta_min);
-		//dispMap[yOff * width + xOff] = (unsigned char) (float(disp) / float(-delta_max) * 255.0f);
 	}
 }
 

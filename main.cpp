@@ -335,7 +335,8 @@ int main(int argc, char** argv) {
 	string output, input;
 	CvSize imageSize = {0, 0};
 	float *gDispMap = 0;
-	unsigned char *dispMap, *gLeftRekt = 0, *gRightRekt = 0;
+	float *dispMap;
+	unsigned char *gLeftRekt = 0, *gRightRekt = 0;
 	int device;
 	struct cudaDeviceProp prop;
 	bool loadNewImages = true;
@@ -485,7 +486,7 @@ int main(int argc, char** argv) {
 		cout << "FPS: " << 1000000 / msdiff.total_microseconds() << endl << endl;
 		
 		Mat dispMat = Mat(imageSize.height, imageSize.width, DataType<float>::type/*CV_8UC1*/);
-		dispMat.data = dispMap;
+		dispMat.data = (uchar *) dispMap;
 		
 		imshow("Disparity Map", dispMat);
 		waitKey(0);
@@ -547,20 +548,22 @@ int main(int argc, char** argv) {
 				} else 
 					cout << endl << "You haven't selected a proper number for an algorithm." << endl;
 			} else if (input.compare("save") == 0) {
-				cout << "Outfile name (*.jpg): ";
+				cout << "Outfile name (*.yml, *.xml): ";
 				cin >> output;
 				
-				while (output.rfind(".jpg") != output.length() - 4) {
-					cout << "The outfile isn't a JPEG-File!" << endl
-							<< "Outfile name (*.jpg): ";
+				while (output.rfind(".xml") != output.length() - 4 && output.rfind(".yml") != output.length() - 4) {
+					cout << "The outfile isn't a YML- or XML-File!" << endl
+							<< "Outfile name (*.yml, *.xml): ";
 					cin >> output;
 				}
 				
-				vector<int> compression_params;
+				/*vector<int> compression_params;
 				compression_params.push_back(CV_IMWRITE_JPEG_QUALITY);
 				compression_params.push_back(100);
 				
-				imwrite(output, dispMat, compression_params);
+				imwrite(output, dispMat, compression_params);*/
+				FileStorage fs(output, FileStorage::WRITE);
+				fs << "dispmat" << dispMat;
 			} else if (input.compare("load_image") == 0) {
 				loadNewImages = true;
 				
