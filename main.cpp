@@ -276,7 +276,7 @@ long long timeUSec() {
 	return now.time_of_day().total_microseconds();
 }
 
-void loadImages(unsigned char **gDispMap, CvSize *imageSize, boost::posix_time::ptime *start, bool rectify, 
+void loadImages(float **gDispMap, CvSize *imageSize, boost::posix_time::ptime *start, bool rectify, 
 		Mat *leftImg, Mat *rightImg, unsigned char **gLeftRekt, unsigned char **gRightRekt) {
 	string leftPath, rightPath;
 	
@@ -311,7 +311,7 @@ void loadImages(unsigned char **gDispMap, CvSize *imageSize, boost::posix_time::
 		cudaFree(*gRightRekt);
 		
 		if (cudaMalloc((void **) gDispMap, (*imageSize).height * (*imageSize).width  
-				* sizeof(unsigned char)) != cudaSuccess) {
+				* sizeof(float)) != cudaSuccess) {
 			cerr << "ERROR: Failed cudaMalloc of disparity map" << endl;
 			exit(-1);
 		}
@@ -334,7 +334,9 @@ int main(int argc, char** argv) {
 	int algo = 0, algonew;
 	string output, input;
 	CvSize imageSize = {0, 0};
-	unsigned char *gDispMap = 0, *dispMap, *gLeftRekt = 0, *gRightRekt = 0;
+	float *gDispMap = 0;
+	float *dispMap;
+	unsigned char *gLeftRekt = 0, *gRightRekt = 0;
 	int device;
 	struct cudaDeviceProp prop;
 	bool loadNewImages = true;
@@ -473,18 +475,18 @@ int main(int argc, char** argv) {
 				gRightRekt, gDispMap, imageSize.width, imageSize.height, gridDim, blockDim, frame, delta_min, delta_max, borderVal, steps, algo);
 		cout << "done" << endl;
 		
-		dispMap = new unsigned char[imageSize.width * imageSize.height];
-		memset(dispMap, 0, imageSize.width * imageSize.height * sizeof(unsigned char));
+		dispMap = new float[imageSize.width * imageSize.height];
+		memset(dispMap, 0, imageSize.width * imageSize.height * sizeof(float));
 		cudaMemcpy(dispMap, gDispMap, imageSize.width * imageSize.height 
-				* sizeof(unsigned char), cudaMemcpyDeviceToHost);
+				* sizeof(float), cudaMemcpyDeviceToHost);
 		
 		end = boost::posix_time::microsec_clock::local_time();
 		boost::posix_time::time_duration msdiff = end - start;
 		cout << "Time: " << msdiff.total_microseconds() / 1000.0 << "ms" << endl;
 		cout << "FPS: " << 1000000 / msdiff.total_microseconds() << endl << endl;
 		
-		Mat dispMat = Mat(imageSize.height, imageSize.width, DataType<unsigned char>::type/*CV_8UC1*/);
-		dispMat.data = dispMap;
+		Mat dispMat = Mat(imageSize.height, imageSize.width, DataType<float>::type/*CV_8UC1*/);
+		dispMat.data = (uchar *) dispMap;
 		
 		imshow("Disparity Map", dispMat);
 		waitKey(0);
@@ -546,20 +548,22 @@ int main(int argc, char** argv) {
 				} else 
 					cout << endl << "You haven't selected a proper number for an algorithm." << endl;
 			} else if (input.compare("save") == 0) {
-				cout << "Outfile name (*.jpg): ";
+				cout << "Outfile name (*.yml, *.xml): ";
 				cin >> output;
 				
-				while (output.rfind(".jpg") != output.length() - 4) {
-					cout << "The outfile isn't a JPEG-File!" << endl
-							<< "Outfile name (*.jpg): ";
+				while (output.rfind(".xml") != output.length() - 4 && output.rfind(".yml") != output.length() - 4) {
+					cout << "The outfile isn't a YML- or XML-File!" << endl
+							<< "Outfile name (*.yml, *.xml): ";
 					cin >> output;
 				}
 				
-				vector<int> compression_params;
+				/*vector<int> compression_params;
 				compression_params.push_back(CV_IMWRITE_JPEG_QUALITY);
 				compression_params.push_back(100);
 				
-				imwrite(output, dispMat, compression_params);
+				imwrite(output, dispMat, compression_params);*/
+				FileStorage fs(output, FileStorage::WRITE);
+				fs << "dispmat" << dispMat;
 			} else if (input.compare("load_image") == 0) {
 				loadNewImages = true;
 				
