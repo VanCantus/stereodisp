@@ -75,35 +75,37 @@ __global__ void ssd(unsigned char *leftImg, unsigned char *rightImg, unsigned ch
 	if (xOff < frame + 1 + delta_max || xOff >= width - frame - 1 || yOff < frame + 1 || yOff >= height - frame - 1) {
 		dispMap[yOff * width + xOff] = 0;
 	} else if (xOff < width && yOff < height) {
-		int disp = 0;
-		float val;
+		float disp = delta_min * steps;
+		int delta_min_ssd, step_min_ssd;
+		float ssd_prev, ssd_right;
 
-		for (int delta = -delta_min; delta >= -delta_max; delta--) {
-			int s;
-			for (s = 0; s < steps; s++) {
+		for (int delta = -delta_min + 1; delta >= -delta_max - 1; delta--) {
+			for (int s = 0; s < steps; s++) {
 				float cur_ssd = 0.0f;
 
 				for (int j = yOff - frame; j < yOff + frame + 1; j++) {
 					for (int i = xOff - frame; i < xOff + frame + 1; i++) {
-						val = float(leftImg[j * width + i] - interpolate(rightImg[j * width + i + delta], 
+						float tmp_val = float(leftImg[j * width + i] - interpolate(rightImg[j * width + i + delta], 
 									rightImg[j * width + i + delta + 1], float(s) / float(steps)));
-						cur_ssd += (val * val);
+						cur_ssd += (tmp_val * tmp_val);
 					}
 				}
+
+				//TODO: minimum berechnen ueber quadr. Funktion
+				ssd_prev = cur_ssd;
 				
 				if (cur_ssd < ssd_max) {
 					ssd_max = cur_ssd;
 					disp = -delta * steps + s;
 				}
 			}
-			
-			if (disp == (delta_max + 1) * steps - 1)
-				dispMap[yOff * width + xOff] = 0;
-			else
-				dispMap[yOff * width + xOff] = (unsigned char) (float(disp - delta_min * steps) 
-						/ float(steps * (delta_max - delta_min)) * 255.0f); 
 		}
-		//dispMap[yOff * width + xOff] = (unsigned char) (float(disp) / float(-delta_max) * 255.0f);
+
+		if (disp >= delta_max * steps || disp <= delta_min * steps)
+			dispMap[yOff * width + xOff] = 0;
+		else
+			dispMap[yOff * width + xOff] = (unsigned char) (float(disp - delta_min * steps) 
+					/ float(steps * (delta_max - delta_min)) * 255.0f); 
 	}
 }
 
